@@ -11,8 +11,8 @@ if (process.contextIsolated) {
   try {
     contextBridge.exposeInMainWorld('electron', electronAPI)
     contextBridge.exposeInMainWorld('api', api)
-  } catch (error) {
-    console.error(error)
+  } catch {
+    // Silently fail if context bridge exposure fails
   }
 } else {
   // @ts-ignore (define in dts)

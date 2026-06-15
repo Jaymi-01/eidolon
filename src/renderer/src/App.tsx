@@ -183,8 +183,8 @@ function App(): React.JSX.Element {
         setOutputs(audioOutputs)
         if (audioInputs.length > 0 && !selectedInput) setSelectedInput(audioInputs[0].deviceId)
         if (audioOutputs.length > 0 && !selectedOutput) setSelectedOutput(audioOutputs[0].deviceId)
-      } catch (err) {
-        console.error('Error accessing devices:', err)
+      } catch {
+        // Handle error silently
       }
     }
     getDevices()
@@ -365,7 +365,6 @@ function App(): React.JSX.Element {
 
       setIsProcessing(true)
     } catch (err: unknown) {
-      console.error('Failed to start audio processing:', err)
       stopAudio()
       throw err
     }
@@ -377,7 +376,7 @@ function App(): React.JSX.Element {
       streamRef.current = null
     }
     if (audioContextRef.current) {
-      audioContextRef.current.close().catch(console.error)
+      audioContextRef.current.close().catch(() => {})
       audioContextRef.current = null
     }
     if (audioTagRef.current) {
