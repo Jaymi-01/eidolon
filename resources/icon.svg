@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <rect width="256" height="256" rx="56" fill="#09090b" />
+  <rect width="252" height="252" x="2" y="2" rx="54" fill="none" stroke="#18181b" stroke-width="4" />
+  <g stroke="none" fill-rule="evenodd">
+    <path d="M128 64 C160 64 176 88 176 128 C176 176 144 192 128 192 C112 192 80 176 80 128 C80 88 96 64 128 64 Z" 
+          fill="url(#roseGlow)" opacity="0.9" />
+    <rect x="56" y="104" width="8" height="48" rx="4" fill="#f43f5e" opacity="0.4" />
+    <rect x="40" y="116" width="8" height="24" rx="4" fill="#f43f5e" opacity="0.2" />
+    <rect x="192" y="104" width="8" height="48" rx="4" fill="#f43f5e" opacity="0.4" />
+    <rect x="208" y="116" width="8" height="24" rx="4" fill="#f43f5e" opacity="0.2" />
+    <rect x="124" y="80" width="8" height="96" rx="4" fill="#09090b" />
+    <rect x="104" y="96" width="8" height="64" rx="4" fill="#09090b" />
+    <rect x="144" y="96" width="8" height="64" rx="4" fill="#09090b" />
+  </g>
+  <defs>
+    <linearGradient id="roseGlow" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#f43f5e" />
+      <stop offset="100%" stop-color="#881337" />
+    </linearGradient>
+  </defs>
+</svg>
