@@ -16,6 +16,12 @@ class PitchProcessor extends AudioWorkletProcessor {
         defaultValue: 0.0,
         minValue: 0.0,
         maxValue: 1.0
+      },
+      {
+        name: 'gateThreshold',
+        defaultValue: -100.0,
+        minValue: -100.0,
+        maxValue: 0.0
       }
     ]
   }
@@ -50,12 +56,22 @@ class PitchProcessor extends AudioWorkletProcessor {
     const output = outputs[0][0]
     const pitchParam = parameters.pitch
     const robotParam = parameters.robotAmount
+    const gateParam = parameters.gateThreshold
 
     if (!input) return true
 
+    const gateThreshold = gateParam.length > 1 ? gateParam[0] : gateParam[0]
+    const thresholdLinear = Math.pow(10, gateThreshold / 20)
+
     for (let i = 0; i < input.length; i++) {
+      // 0. Noise Gate
+      let inSample = input[i]
+      if (Math.abs(inSample) < thresholdLinear && gateThreshold > -100) {
+        inSample = 0
+      }
+
       // 1. Pitch Shifting (Granular)
-      this.buffer[this.writeIndex] = input[i]
+      this.buffer[this.writeIndex] = inSample
 
       const p = pitchParam.length > 1 ? pitchParam[i] : pitchParam[0]
 
