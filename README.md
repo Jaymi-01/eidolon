@@ -17,10 +17,10 @@
 
 ## 📥 Download (Pre-built)
 
-You can find the latest stable installers in the [release](./release) folder:
+You can find the latest stable installers here:
 
-- **Windows**: [Download .zip (Installer)](./release/windows/eidolon-windows.zip)
-- **macOS**: *Coming soon (Requires building on macOS)*
+- **Windows**: [Download from Google Drive](https://drive.google.com/drive/folders/1zkGxiVEG7H-m0ghc-jtj7Gfjtt0W-p45?usp=sharing)
+- **macOS**: *Coming soon*
 
 ---
 
