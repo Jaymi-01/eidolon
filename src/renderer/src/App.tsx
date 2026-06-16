@@ -11,7 +11,7 @@ import {
 } from '@phosphor-icons/react'
 import { clsx, type ClassValue } from 'clsx'
 import { twMerge } from 'tailwind-merge'
-import pitchProcessorUrl from './audio/pitch-processor.ts?url'
+import pitchProcessorUrl from './audio/pitch-processor.ts?worker&url'
 
 function cn(...inputs: ClassValue[]): string {
   return twMerge(clsx(inputs))
