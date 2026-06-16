@@ -2,18 +2,12 @@ import { useState, useEffect, useRef } from 'react'
 import {
   Microphone,
   SpeakerHigh,
-  Waveform,
   Lightning,
   Power,
-  SpeakerLow,
   Pulse,
   CaretDown,
   Check,
-  SpeakerSimpleHigh,
-  ShieldCheck,
-  Plus,
-  Trash,
-  FloppyDisk
+  SpeakerSimpleHigh
 } from '@phosphor-icons/react'
 import { clsx, type ClassValue } from 'clsx'
 import { twMerge } from 'tailwind-merge'
@@ -23,10 +17,6 @@ function cn(...inputs: ClassValue[]): string {
   return twMerge(clsx(inputs))
 }
 
-interface HTMLAudioElementWithSinkId extends HTMLAudioElement {
-  setSinkId(deviceId: string): Promise<void>
-}
-
 interface DropdownProps {
   label: string
   icon: React.ReactNode
@@ -34,16 +24,6 @@ interface DropdownProps {
   value: string
   onChange: (value: string) => void
   placeholder?: string
-}
-
-interface Preset {
-  id: string
-  name: string
-  pitch: number
-  reverb: number
-  robot: number
-  volume: number
-  gateThreshold: number
 }
 
 function CustomDropdown({
@@ -141,18 +121,7 @@ function App(): React.JSX.Element {
     localStorage.getItem('selectedOutput') || ''
   )
   const [pitch, setPitch] = useState<number>(parseFloat(localStorage.getItem('pitch') || '1.0'))
-  const [reverb, setReverb] = useState<number>(parseFloat(localStorage.getItem('reverb') || '0.0'))
-  const [robot, setRobot] = useState<number>(parseFloat(localStorage.getItem('robot') || '0.0'))
   const [volume, setVolume] = useState<number>(parseFloat(localStorage.getItem('volume') || '1.0'))
-  const [gateThreshold, setGateThreshold] = useState<number>(
-    parseFloat(localStorage.getItem('gateThreshold') || '-100')
-  )
-
-  const [presets, setPresets] = useState<Preset[]>(() => {
-    const saved = localStorage.getItem('presets')
-    return saved ? JSON.parse(saved) : []
-  })
-  const [presetName, setPresetName] = useState('')
 
   const [isProcessing, setIsProcessing] = useState<boolean>(false)
   const [isStarting, setIsStarting] = useState<boolean>(false)
@@ -161,13 +130,8 @@ function App(): React.JSX.Element {
   const audioContextRef = useRef<AudioContext | null>(null)
   const streamRef = useRef<MediaStream | null>(null)
   const pitchNodeRef = useRef<AudioWorkletNode | null>(null)
-  const reverbNodeRef = useRef<ConvolverNode | null>(null)
-  const dryGainRef = useRef<GainNode | null>(null)
-  const wetGainRef = useRef<GainNode | null>(null)
   const masterGainRef = useRef<GainNode | null>(null)
   const sourceNodeRef = useRef<MediaStreamAudioSourceNode | null>(null)
-  const destinationNodeRef = useRef<MediaStreamAudioDestinationNode | null>(null)
-  const audioTagRef = useRef<HTMLAudioElement | null>(null)
   const analyserRef = useRef<AnalyserNode | null>(null)
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const levelFrameRef = useRef<number | null>(null)
@@ -175,32 +139,42 @@ function App(): React.JSX.Element {
   useEffect(() => {
     async function getDevices(): Promise<void> {
       try {
-        await navigator.mediaDevices.getUserMedia({ audio: true })
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
         const devices = await navigator.mediaDevices.enumerateDevices()
+        stream.getTracks().forEach((track) => track.stop())
+
         const audioInputs = devices.filter((d) => d.kind === 'audioinput')
         const audioOutputs = devices.filter((d) => d.kind === 'audiooutput')
         setInputs(audioInputs)
         setOutputs(audioOutputs)
-        if (audioInputs.length > 0 && !selectedInput) setSelectedInput(audioInputs[0].deviceId)
-        if (audioOutputs.length > 0 && !selectedOutput) setSelectedOutput(audioOutputs[0].deviceId)
+
+        if (audioInputs.length > 0) {
+          setSelectedInput((prev) => prev || audioInputs[0].deviceId)
+        }
+        if (audioOutputs.length > 0) {
+          setSelectedOutput((prev) => prev || audioOutputs[0].deviceId)
+        }
       } catch {
         // Handle error silently
       }
     }
     getDevices()
     navigator.mediaDevices.ondevicechange = getDevices
-  }, [selectedInput, selectedOutput])
+  }, [])
+
+  useEffect(() => {
+    if (audioContextRef.current && isProcessing && selectedOutput) {
+      // @ts-ignore: setSinkId is available in modern Chromium/Electron
+      audioContextRef.current.setSinkId(selectedOutput).catch(() => {})
+    }
+  }, [selectedOutput, isProcessing])
 
   useEffect(() => {
     localStorage.setItem('selectedInput', selectedInput)
     localStorage.setItem('selectedOutput', selectedOutput)
     localStorage.setItem('pitch', pitch.toString())
-    localStorage.setItem('reverb', reverb.toString())
-    localStorage.setItem('robot', robot.toString())
     localStorage.setItem('volume', volume.toString())
-    localStorage.setItem('gateThreshold', gateThreshold.toString())
-    localStorage.setItem('presets', JSON.stringify(presets))
-  }, [selectedInput, selectedOutput, pitch, reverb, robot, volume, gateThreshold, presets])
+  }, [selectedInput, selectedOutput, pitch, volume])
 
   useEffect(() => {
     if (pitchNodeRef.current) {
@@ -208,24 +182,8 @@ function App(): React.JSX.Element {
       if (pitchParam) {
         pitchParam.setTargetAtTime(pitch, audioContextRef.current?.currentTime || 0, 0.1)
       }
-      const robotParam = pitchNodeRef.current.parameters.get('robotAmount')
-      if (robotParam) {
-        robotParam.setTargetAtTime(robot, audioContextRef.current?.currentTime || 0, 0.1)
-      }
-      const gateParam = pitchNodeRef.current.parameters.get('gateThreshold')
-      if (gateParam) {
-        gateParam.setTargetAtTime(gateThreshold, audioContextRef.current?.currentTime || 0, 0.1)
-      }
     }
-  }, [pitch, robot, gateThreshold])
-
-  useEffect(() => {
-    if (wetGainRef.current && dryGainRef.current) {
-      const now = audioContextRef.current?.currentTime || 0
-      wetGainRef.current.gain.setTargetAtTime(reverb, now, 0.1)
-      dryGainRef.current.gain.setTargetAtTime(1 - reverb, now, 0.1)
-    }
-  }, [reverb])
+  }, [pitch])
 
   useEffect(() => {
     if (masterGainRef.current) {
@@ -283,21 +241,11 @@ function App(): React.JSX.Element {
     }
   }, [isProcessing])
 
-  const createImpulseResponse = (context: AudioContext): AudioBuffer => {
-    const length = context.sampleRate * 2
-    const buffer = context.createBuffer(2, length, context.sampleRate)
-    for (let channel = 0; channel < buffer.numberOfChannels; channel++) {
-      const data = buffer.getChannelData(channel)
-      for (let i = 0; i < length; i++) {
-        data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / length, 3)
-      }
-    }
-    return buffer
-  }
-
   const startAudio = async (): Promise<void> => {
     try {
-      const audioContext = new AudioContext({ sampleRate: 44100 })
+      const audioContext = new AudioContext({
+        latencyHint: 'interactive'
+      })
       audioContextRef.current = audioContext
 
       if (audioContext.state === 'suspended') {
@@ -306,9 +254,18 @@ function App(): React.JSX.Element {
 
       await audioContext.audioWorklet.addModule(pitchProcessorUrl)
 
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: selectedInput === 'default' ? true : { deviceId: { exact: selectedInput } }
-      })
+      const constraints: MediaStreamConstraints = {
+        audio: {
+          deviceId: selectedInput ? { exact: selectedInput } : undefined,
+          echoCancellation: false,
+          noiseSuppression: false,
+          autoGainControl: false,
+          // @ts-ignore: custom constraint
+          latency: 0
+        }
+      }
+
+      const stream = await navigator.mediaDevices.getUserMedia(constraints)
       streamRef.current = stream
 
       sourceNodeRef.current = audioContext.createMediaStreamSource(stream)
@@ -316,51 +273,30 @@ function App(): React.JSX.Element {
       pitchNodeRef.current = new AudioWorkletNode(audioContext, 'pitch-processor', {
         numberOfInputs: 1,
         numberOfOutputs: 1,
-        outputChannelCount: [1]
+        outputChannelCount: [2]
       })
 
       analyserRef.current = audioContext.createAnalyser()
       analyserRef.current.fftSize = 64
 
-      reverbNodeRef.current = audioContext.createConvolver()
-      reverbNodeRef.current.buffer = createImpulseResponse(audioContext)
-
-      dryGainRef.current = audioContext.createGain()
-      wetGainRef.current = audioContext.createGain()
       masterGainRef.current = audioContext.createGain()
-
-      destinationNodeRef.current = audioContext.createMediaStreamDestination()
 
       const pitchParam = pitchNodeRef.current.parameters.get('pitch')
       if (pitchParam) pitchParam.setValueAtTime(pitch, audioContext.currentTime)
 
-      const robotParam = pitchNodeRef.current.parameters.get('robotAmount')
-      if (robotParam) robotParam.setValueAtTime(robot, audioContext.currentTime)
-
-      const gateParam = pitchNodeRef.current.parameters.get('gateThreshold')
-      if (gateParam) gateParam.setValueAtTime(gateThreshold, audioContext.currentTime)
-
-      wetGainRef.current.gain.setValueAtTime(reverb, audioContext.currentTime)
-      dryGainRef.current.gain.setValueAtTime(1 - reverb, audioContext.currentTime)
       masterGainRef.current.gain.setValueAtTime(volume, audioContext.currentTime)
 
       sourceNodeRef.current.connect(pitchNodeRef.current)
-      pitchNodeRef.current.connect(dryGainRef.current)
-      dryGainRef.current.connect(masterGainRef.current)
-      pitchNodeRef.current.connect(reverbNodeRef.current)
-      reverbNodeRef.current.connect(wetGainRef.current)
-      wetGainRef.current.connect(masterGainRef.current)
-
-      masterGainRef.current.connect(destinationNodeRef.current)
+      pitchNodeRef.current.connect(masterGainRef.current)
+      masterGainRef.current.connect(audioContext.destination)
       masterGainRef.current.connect(analyserRef.current)
 
-      if (audioTagRef.current) {
-        audioTagRef.current.srcObject = destinationNodeRef.current.stream
-        const audioWithSinkId = audioTagRef.current as HTMLAudioElementWithSinkId
-        if (selectedOutput && 'setSinkId' in audioWithSinkId) {
-          await audioWithSinkId.setSinkId(selectedOutput)
-        }
-        await audioTagRef.current.play()
+      // Add a small delay to allow parameters to propagate
+      await new Promise((resolve) => setTimeout(resolve, 50))
+
+      if (selectedOutput) {
+        // @ts-ignore: setSinkId is available in modern Chromium/Electron
+        await audioContext.setSinkId(selectedOutput).catch(() => {})
       }
 
       setIsProcessing(true)
@@ -379,17 +315,9 @@ function App(): React.JSX.Element {
       audioContextRef.current.close().catch(() => {})
       audioContextRef.current = null
     }
-    if (audioTagRef.current) {
-      audioTagRef.current.pause()
-      audioTagRef.current.srcObject = null
-    }
     pitchNodeRef.current = null
-    reverbNodeRef.current = null
-    dryGainRef.current = null
-    wetGainRef.current = null
     masterGainRef.current = null
     sourceNodeRef.current = null
-    destinationNodeRef.current = null
     setIsProcessing(false)
   }
 
@@ -409,40 +337,11 @@ function App(): React.JSX.Element {
     }
   }
 
-  const savePreset = (): void => {
-    if (!presetName.trim()) return
-    const newPreset: Preset = {
-      id: crypto.randomUUID(),
-      name: presetName,
-      pitch,
-      reverb,
-      robot,
-      volume,
-      gateThreshold
-    }
-    setPresets([...presets, newPreset])
-    setPresetName('')
-  }
-
-  const applyPreset = (p: Preset): void => {
-    setPitch(p.pitch)
-    setReverb(p.reverb)
-    setRobot(p.robot)
-    setVolume(p.volume)
-    setGateThreshold(p.gateThreshold)
-  }
-
-  const deletePreset = (id: string): void => {
-    setPresets(presets.filter((p) => p.id !== id))
-  }
-
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100 p-4 flex flex-col items-center justify-center font-sans selection:bg-rose-500/30">
-      <audio ref={audioTagRef} className="hidden" />
-
       <div className="max-w-3xl w-full animate-in fade-in slide-in-from-bottom-8 duration-1000 ease-out-expo">
         {/* Main Interface Card */}
-        <div className="bg-zinc-900/40 border border-zinc-800 rounded-3xl shadow-2xl shadow-black/50 overflow-hidden backdrop-blur-md transition-all duration-500 hover:border-zinc-700/50">
+        <div className="bg-zinc-900/40 border border-zinc-800 rounded-3xl shadow-2xl shadow-black/50 backdrop-blur-md transition-all duration-500 hover:border-zinc-700/50">
           {/* Header */}
           <div className="p-8 pb-3 flex items-end justify-between">
             <div className="animate-in fade-in slide-in-from-left-4 duration-1000 delay-200 ease-out-expo">
@@ -501,114 +400,33 @@ function App(): React.JSX.Element {
               />
             </div>
 
-            {/* Presets System */}
-            <div className="space-y-4 pt-3 border-t border-zinc-800/50 animate-in fade-in slide-in-from-bottom-4 duration-1000 delay-450">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2 text-zinc-500">
-                  <FloppyDisk size={14} />
-                  <label className="text-[10px] font-semibold uppercase tracking-wider">
-                    Presets
-                  </label>
-                </div>
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    value={presetName}
-                    onChange={(e) => setPresetName(e.target.value)}
-                    placeholder="New preset..."
-                    className="bg-zinc-800/30 border border-zinc-800 rounded-lg px-2.5 py-1 text-[11px] text-zinc-200 focus:ring-1 focus:ring-rose-500/30 outline-none transition-all placeholder:text-zinc-600 w-32"
-                  />
-                  <button
-                    onClick={savePreset}
-                    disabled={!presetName.trim()}
-                    className="p-1.5 bg-rose-600 text-white rounded-lg hover:bg-rose-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                  >
-                    <Plus size={12} weight="bold" />
-                  </button>
-                </div>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                {presets.length === 0 && (
-                  <span className="text-zinc-600 text-[10px] italic">No saved presets</span>
-                )}
-                {presets.map((p) => (
-                  <div
-                    key={p.id}
-                    className="group flex items-center bg-zinc-800/40 border border-zinc-800 rounded-lg overflow-hidden transition-all hover:border-zinc-700"
-                  >
-                    <button
-                      onClick={() => applyPreset(p)}
-                      className="px-2.5 py-1 text-[10px] text-zinc-300 hover:text-rose-400 transition-colors"
-                    >
-                      {p.name}
-                    </button>
-                    <button
-                      onClick={() => deletePreset(p.id)}
-                      className="px-1.5 py-1 bg-zinc-800/60 text-zinc-600 hover:text-red-400 transition-colors border-l border-zinc-800"
-                    >
-                      <Trash size={10} />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            </div>
-
             {/* Effects */}
-            <div className="grid grid-cols-1 gap-6 pt-3 border-t border-zinc-800/50 animate-in fade-in slide-in-from-bottom-4 duration-1000 delay-500 ease-out-expo">
-              <div className="grid grid-cols-2 gap-6">
-                {/* Master Volume */}
-                <div className="space-y-4">
-                  <div className="flex justify-between items-center">
-                    <div className="flex items-center gap-2 text-rose-400 group">
-                      <SpeakerSimpleHigh
-                        size={14}
-                        className="transition-transform duration-500 group-hover:scale-110"
-                      />
-                      <span className="text-[10px] font-semibold uppercase tracking-wider">
-                        Master Gain
-                      </span>
-                    </div>
-                    <span className="text-zinc-400 font-mono text-xs">
-                      {(volume * 100).toFixed(0)}%
+            <div className="grid grid-cols-2 gap-6 pt-3 border-t border-zinc-800/50 animate-in fade-in slide-in-from-bottom-4 duration-1000 delay-500 ease-out-expo">
+              {/* Master Volume */}
+              <div className="space-y-4">
+                <div className="flex justify-between items-center">
+                  <div className="flex items-center gap-2 text-rose-400 group">
+                    <SpeakerSimpleHigh
+                      size={14}
+                      className="transition-transform duration-500 group-hover:scale-110"
+                    />
+                    <span className="text-[10px] font-semibold uppercase tracking-wider">
+                      Master Gain
                     </span>
                   </div>
-                  <input
-                    type="range"
-                    min="0"
-                    max="2"
-                    step="0.01"
-                    value={volume}
-                    onChange={(e) => setVolume(parseFloat(e.target.value))}
-                    className="w-full h-1 bg-zinc-800 rounded-full appearance-none cursor-pointer accent-rose-500 hover:accent-rose-400 transition-all"
-                  />
+                  <span className="text-zinc-400 font-mono text-xs">
+                    {(volume * 100).toFixed(0)}%
+                  </span>
                 </div>
-
-                {/* Noise Gate */}
-                <div className="space-y-4">
-                  <div className="flex justify-between items-center">
-                    <div className="flex items-center gap-2 text-zinc-400 group">
-                      <ShieldCheck
-                        size={14}
-                        className="transition-transform duration-500 group-hover:rotate-12"
-                      />
-                      <span className="text-[10px] font-semibold uppercase tracking-wider">
-                        Noise Gate
-                      </span>
-                    </div>
-                    <span className="text-zinc-500 font-mono text-[10px]">
-                      {gateThreshold === -100 ? 'OFF' : `${gateThreshold}dB`}
-                    </span>
-                  </div>
-                  <input
-                    type="range"
-                    min="-100"
-                    max="0"
-                    step="1"
-                    value={gateThreshold}
-                    onChange={(e) => setGateThreshold(parseFloat(e.target.value))}
-                    className="w-full h-1 bg-zinc-800 rounded-full appearance-none cursor-pointer accent-zinc-500 hover:accent-zinc-400 transition-all"
-                  />
-                </div>
+                <input
+                  type="range"
+                  min="0"
+                  max="2"
+                  step="0.01"
+                  value={volume}
+                  onChange={(e) => setVolume(parseFloat(e.target.value))}
+                  className="w-full h-1 bg-zinc-800 rounded-full appearance-none cursor-pointer accent-rose-500 hover:accent-rose-400 transition-all"
+                />
               </div>
 
               {/* Pitch */}
@@ -634,60 +452,6 @@ function App(): React.JSX.Element {
                   onChange={(e) => setPitch(parseFloat(e.target.value))}
                   className="w-full h-1 bg-zinc-800 rounded-full appearance-none cursor-pointer accent-rose-500 hover:accent-rose-400 transition-all"
                 />
-              </div>
-
-              {/* Secondary Controls */}
-              <div className="grid grid-cols-2 gap-6">
-                <div className="space-y-4">
-                  <div className="flex justify-between items-center">
-                    <div className="flex items-center gap-2 text-zinc-400 group">
-                      <Waveform
-                        size={14}
-                        className="transition-transform duration-500 group-hover:rotate-12"
-                      />
-                      <span className="text-[10px] font-semibold uppercase tracking-wider">
-                        Robot
-                      </span>
-                    </div>
-                    <span className="text-zinc-500 font-mono text-[10px]">
-                      {(robot * 100).toFixed(0)}%
-                    </span>
-                  </div>
-                  <input
-                    type="range"
-                    min="0"
-                    max="1"
-                    step="0.01"
-                    value={robot}
-                    onChange={(e) => setRobot(parseFloat(e.target.value))}
-                    className="w-full h-1 bg-zinc-800 rounded-full appearance-none cursor-pointer accent-zinc-500 hover:accent-zinc-400 transition-all"
-                  />
-                </div>
-                <div className="space-y-4">
-                  <div className="flex justify-between items-center">
-                    <div className="flex items-center gap-2 text-zinc-400 group">
-                      <SpeakerLow
-                        size={14}
-                        className="transition-transform duration-500 group-hover:-translate-x-0.5"
-                      />
-                      <span className="text-[10px] font-semibold uppercase tracking-wider">
-                        Reverb
-                      </span>
-                    </div>
-                    <span className="text-zinc-500 font-mono text-[10px]">
-                      {(reverb * 100).toFixed(0)}%
-                    </span>
-                  </div>
-                  <input
-                    type="range"
-                    min="0"
-                    max="1"
-                    step="0.01"
-                    value={reverb}
-                    onChange={(e) => setReverb(parseFloat(e.target.value))}
-                    className="w-full h-1 bg-zinc-800 rounded-full appearance-none cursor-pointer accent-zinc-500 hover:accent-zinc-400 transition-all"
-                  />
-                </div>
               </div>
             </div>
 
