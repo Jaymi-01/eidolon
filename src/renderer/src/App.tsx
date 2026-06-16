@@ -7,7 +7,10 @@ import {
   Pulse,
   CaretDown,
   Check,
-  SpeakerSimpleHigh
+  SpeakerSimpleHigh,
+  Plus,
+  Trash,
+  FloppyDisk
 } from '@phosphor-icons/react'
 import { clsx, type ClassValue } from 'clsx'
 import { twMerge } from 'tailwind-merge'
@@ -24,6 +27,13 @@ interface DropdownProps {
   value: string
   onChange: (value: string) => void
   placeholder?: string
+}
+
+interface Preset {
+  id: string
+  name: string
+  pitch: number
+  volume: number
 }
 
 function CustomDropdown({
@@ -123,6 +133,12 @@ function App(): React.JSX.Element {
   const [pitch, setPitch] = useState<number>(parseFloat(localStorage.getItem('pitch') || '1.0'))
   const [volume, setVolume] = useState<number>(parseFloat(localStorage.getItem('volume') || '1.0'))
 
+  const [presets, setPresets] = useState<Preset[]>(() => {
+    const saved = localStorage.getItem('presets')
+    return saved ? JSON.parse(saved) : []
+  })
+  const [presetName, setPresetName] = useState('')
+
   const [isProcessing, setIsProcessing] = useState<boolean>(false)
   const [isStarting, setIsStarting] = useState<boolean>(false)
   const [peakLevel, setPeakLevel] = useState<number>(0)
@@ -174,7 +190,8 @@ function App(): React.JSX.Element {
     localStorage.setItem('selectedOutput', selectedOutput)
     localStorage.setItem('pitch', pitch.toString())
     localStorage.setItem('volume', volume.toString())
-  }, [selectedInput, selectedOutput, pitch, volume])
+    localStorage.setItem('presets', JSON.stringify(presets))
+  }, [selectedInput, selectedOutput, pitch, volume, presets])
 
   useEffect(() => {
     if (pitchNodeRef.current) {
@@ -337,6 +354,27 @@ function App(): React.JSX.Element {
     }
   }
 
+  const savePreset = (): void => {
+    if (!presetName.trim()) return
+    const newPreset: Preset = {
+      id: crypto.randomUUID(),
+      name: presetName,
+      pitch,
+      volume
+    }
+    setPresets([...presets, newPreset])
+    setPresetName('')
+  }
+
+  const applyPreset = (p: Preset): void => {
+    setPitch(p.pitch)
+    setVolume(p.volume)
+  }
+
+  const deletePreset = (id: string): void => {
+    setPresets(presets.filter((p) => p.id !== id))
+  }
+
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100 p-4 flex flex-col items-center justify-center font-sans selection:bg-rose-500/30">
       <div className="max-w-3xl w-full animate-in fade-in slide-in-from-bottom-8 duration-1000 ease-out-expo">
@@ -398,6 +436,58 @@ function App(): React.JSX.Element {
                 onChange={setSelectedOutput}
                 placeholder="Select Output"
               />
+            </div>
+
+            {/* Presets System */}
+            <div className="space-y-4 pt-3 border-t border-zinc-800/50 animate-in fade-in slide-in-from-bottom-4 duration-1000 delay-450">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 text-zinc-500">
+                  <FloppyDisk size={14} />
+                  <label className="text-[10px] font-semibold uppercase tracking-wider">
+                    Presets
+                  </label>
+                </div>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={presetName}
+                    onChange={(e) => setPresetName(e.target.value)}
+                    placeholder="New preset..."
+                    className="bg-zinc-800/30 border border-zinc-800 rounded-lg px-2.5 py-1 text-[11px] text-zinc-200 focus:ring-1 focus:ring-rose-500/30 outline-none transition-all placeholder:text-zinc-600 w-32"
+                  />
+                  <button
+                    onClick={savePreset}
+                    disabled={!presetName.trim()}
+                    className="p-1.5 bg-rose-600 text-white rounded-lg hover:bg-rose-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  >
+                    <Plus size={12} weight="bold" />
+                  </button>
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {presets.length === 0 && (
+                  <span className="text-zinc-600 text-[10px] italic">No saved presets</span>
+                )}
+                {presets.map((p) => (
+                  <div
+                    key={p.id}
+                    className="group flex items-center bg-zinc-800/40 border border-zinc-800 rounded-lg overflow-hidden transition-all hover:border-zinc-700"
+                  >
+                    <button
+                      onClick={() => applyPreset(p)}
+                      className="px-2.5 py-1 text-[10px] text-zinc-300 hover:text-rose-400 transition-colors"
+                    >
+                      {p.name}
+                    </button>
+                    <button
+                      onClick={() => deletePreset(p.id)}
+                      className="px-1.5 py-1 bg-zinc-800/60 text-zinc-600 hover:text-red-400 transition-colors border-l border-zinc-800"
+                    >
+                      <Trash size={10} />
+                    </button>
+                  </div>
+                ))}
+              </div>
             </div>
 
             {/* Effects */}
