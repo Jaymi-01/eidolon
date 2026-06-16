@@ -1,5 +1,5 @@
 /**
- * A simple Granular Pitch Shifter AudioWorkletProcessor.
+ * A robust real-time pitch shifter using two cross-fading delay lines.
  */
 
 class PitchProcessor extends AudioWorkletProcessor {
@@ -10,18 +10,6 @@ class PitchProcessor extends AudioWorkletProcessor {
         defaultValue: 1.0,
         minValue: 0.5,
         maxValue: 2.0
-      },
-      {
-        name: 'robotAmount',
-        defaultValue: 0.0,
-        minValue: 0.0,
-        maxValue: 1.0
-      },
-      {
-        name: 'gateThreshold',
-        defaultValue: -100.0,
-        minValue: -100.0,
-        maxValue: 0.0
       }
     ]
   }
@@ -29,22 +17,25 @@ class PitchProcessor extends AudioWorkletProcessor {
   private bufferSize: number
   private buffer: Float32Array
   private writeIndex: number
-  private readIndex1: number
-  private readIndex2: number
+  private delayLine1: number
+  private delayLine2: number
   private grainSize: number
   private halfGrain: number
-  private phi: number
 
   constructor() {
     super()
+    // 1 second buffer at 44.1kHz
     this.bufferSize = 44100
     this.buffer = new Float32Array(this.bufferSize)
     this.writeIndex = 0
-    this.readIndex1 = 0
-    this.readIndex2 = 1024
-    this.grainSize = 2048
-    this.halfGrain = 1024
-    this.phi = 0
+
+    // Size of the crossfade window
+    this.grainSize = 1024
+    this.halfGrain = 512
+
+    // Initial delays (in samples)
+    this.delayLine1 = 0
+    this.delayLine2 = this.halfGrain
   }
 
   process(
@@ -53,62 +44,66 @@ class PitchProcessor extends AudioWorkletProcessor {
     parameters: Record<string, Float32Array>
   ): boolean {
     const input = inputs[0][0]
-    const output = outputs[0][0]
+    const outputL = outputs[0][0]
+    const outputR = outputs[0][1]
+
+    if (!input || !outputL) return true
+
     const pitchParam = parameters.pitch
-    const robotParam = parameters.robotAmount
-    const gateParam = parameters.gateThreshold
-
-    if (!input) return true
-
-    const gateThreshold = gateParam.length > 1 ? gateParam[0] : gateParam[0]
-    const thresholdLinear = Math.pow(10, gateThreshold / 20)
 
     for (let i = 0; i < input.length; i++) {
-      // 0. Noise Gate
-      let inSample = input[i]
-      if (Math.abs(inSample) < thresholdLinear && gateThreshold > -100) {
-        inSample = 0
-      }
-
-      // 1. Pitch Shifting (Granular)
-      this.buffer[this.writeIndex] = inSample
-
+      const inSample = input[i]
       const p = pitchParam.length > 1 ? pitchParam[i] : pitchParam[0]
 
-      const idx1 = Math.floor(this.readIndex1) % this.bufferSize
-      const idx2 = Math.floor(this.readIndex2) % this.bufferSize
+      // Store input in circular buffer
+      this.buffer[this.writeIndex] = inSample
 
-      const phase =
-        ((this.readIndex1 - (this.writeIndex - this.grainSize + this.bufferSize)) %
-          this.bufferSize) /
-        this.grainSize
-      const weight = 0.5 - 0.5 * Math.cos(2 * Math.PI * phase)
+      // Calculate the rate at which delay must change to achieve pitch 'p'
+      // pitch = 1 - d(delay)/dt  =>  d(delay)/dt = 1 - pitch
+      const delayRate = 1.0 - p
 
-      let sample = this.buffer[idx1] * weight + this.buffer[idx2] * (1 - weight)
+      // Update delay pointers
+      this.delayLine1 += delayRate
+      this.delayLine2 += delayRate
 
-      // 2. Robot Effect (Ring Modulation)
-      const robotAmount = robotParam.length > 1 ? robotParam[i] : robotParam[0]
-      if (robotAmount > 0) {
-        const osc = Math.sin(this.phi)
-        this.phi += 0.1 // ~700Hz modulation at 44.1kHz
-        if (this.phi > Math.PI * 2) this.phi -= Math.PI * 2
+      // Wrap delay pointers and handle cross-fading
+      // We want the delay to stay within [0, grainSize]
+      if (this.delayLine1 >= this.grainSize) this.delayLine1 -= this.grainSize
+      if (this.delayLine1 < 0) this.delayLine1 += this.grainSize
 
-        // Blend robot effect
-        sample = sample * (1 - robotAmount) + sample * osc * robotAmount
-      }
+      if (this.delayLine2 >= this.grainSize) this.delayLine2 -= this.grainSize
+      if (this.delayLine2 < 0) this.delayLine2 += this.grainSize
 
-      output[i] = sample
+      // Calculate crossfade weight based on delayLine1's position
+      // We use a triangular window for simplicity and efficiency
+      let weight1 = this.delayLine1 / this.grainSize
+      // Mirror to get a fade-in/fade-out shape
+      weight1 = 1.0 - Math.abs(weight1 * 2.0 - 1.0)
 
-      // Advance pointers
+      const weight2 = 1.0 - weight1
+
+      // Read from buffer at delayed positions
+      const readIdx1 =
+        (this.writeIndex - this.delayLine1 - this.halfGrain + this.bufferSize) % this.bufferSize
+      const readIdx2 =
+        (this.writeIndex - this.delayLine2 - this.halfGrain + this.bufferSize) % this.bufferSize
+
+      // Interpolate for smoother sound
+      const i1 = Math.floor(readIdx1)
+      const f1 = readIdx1 - i1
+      const sample1 = this.buffer[i1] * (1 - f1) + this.buffer[(i1 + 1) % this.bufferSize] * f1
+
+      const i2 = Math.floor(readIdx2)
+      const f2 = readIdx2 - i2
+      const sample2 = this.buffer[i2] * (1 - f2) + this.buffer[(i2 + 1) % this.bufferSize] * f2
+
+      const outSample = sample1 * weight1 + sample2 * weight2
+
+      outputL[i] = outSample
+      if (outputR) outputR[i] = outSample
+
+      // Advance write pointer
       this.writeIndex = (this.writeIndex + 1) % this.bufferSize
-      this.readIndex1 = (this.readIndex1 + p) % this.bufferSize
-      this.readIndex2 = (this.readIndex2 + p) % this.bufferSize
-
-      const delay = (this.writeIndex - this.readIndex1 + this.bufferSize) % this.bufferSize
-      if (delay > this.grainSize * 2 || delay < this.grainSize / 2) {
-        this.readIndex1 = (this.writeIndex - this.grainSize + this.bufferSize) % this.bufferSize
-        this.readIndex2 = (this.readIndex1 + this.halfGrain) % this.bufferSize
-      }
     }
 
     return true
