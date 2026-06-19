@@ -58,6 +58,19 @@ class PitchProcessor extends AudioWorkletProcessor {
       // Store input in circular buffer
       this.buffer[this.writeIndex] = inSample
 
+      // Dynamically adjust grain size based on pitch to optimize low-frequency clarity vs latency.
+      // A deeper voice (pitch < 1.0) requires a larger window to capture complete wave periods and prevent warbling.
+      // A higher voice (pitch >= 1.0) can use a shorter window to minimize latency and echo artifacts.
+      const targetGrainSize = p < 1.0 ? 2048 : 1024
+      if (this.grainSize !== targetGrainSize) {
+        this.grainSize = targetGrainSize
+        this.halfGrain = targetGrainSize / 2
+
+        // Reset delay line positions cleanly to prevent indices going out of bounds
+        this.delayLine1 = 0
+        this.delayLine2 = this.halfGrain
+      }
+
       // Calculate the rate at which delay must change to achieve pitch 'p'
       // pitch = 1 - d(delay)/dt  =>  d(delay)/dt = 1 - pitch
       const delayRate = 1.0 - p
@@ -74,12 +87,11 @@ class PitchProcessor extends AudioWorkletProcessor {
       if (this.delayLine2 >= this.grainSize) this.delayLine2 -= this.grainSize
       if (this.delayLine2 < 0) this.delayLine2 += this.grainSize
 
-      // Calculate crossfade weight based on delayLine1's position
-      // We use a triangular window for simplicity and efficiency
-      let weight1 = this.delayLine1 / this.grainSize
-      // Mirror to get a fade-in/fade-out shape
-      weight1 = 1.0 - Math.abs(weight1 * 2.0 - 1.0)
-
+      // Calculate crossfade weight based on delayLine1's position.
+      // Instead of a triangular window (which causes sharp non-differentiable points and metallic buzz),
+      // we use a smooth sinusoidal/Hann window (equal-amplitude crossfade) which eliminates click/buzz artifacts.
+      const x1 = this.delayLine1 / this.grainSize
+      const weight1 = Math.sin(Math.PI * x1) * Math.sin(Math.PI * x1)
       const weight2 = 1.0 - weight1
 
       // Read from buffer at delayed positions
