@@ -2,7 +2,6 @@ import { useState, useEffect, useRef } from 'react'
 import {
   Microphone,
   SpeakerHigh,
-  Lightning,
   Power,
   Pulse,
   CaretDown,
@@ -10,7 +9,9 @@ import {
   SpeakerSimpleHigh,
   Plus,
   Trash,
-  FloppyDisk
+  FloppyDisk,
+  GenderMale,
+  GenderFemale
 } from '@phosphor-icons/react'
 import { clsx, type ClassValue } from 'clsx'
 import { twMerge } from 'tailwind-merge'
@@ -32,8 +33,27 @@ interface DropdownProps {
 interface Preset {
   id: string
   name: string
-  pitch: number
+  voiceMode?: 'male' | 'female'
+  malePitch: number
+  femalePitch: number
+  pitch?: number
   volume: number
+}
+
+function getVoiceDescriptor(mode: 'male' | 'female', pitch: number): string {
+  if (mode === 'male') {
+    if (pitch <= 0.60) return 'Deep Bass'
+    if (pitch <= 0.70) return 'Bass-Baritone'
+    if (pitch <= 0.80) return 'Baritone'
+    if (pitch <= 0.90) return 'Tenor'
+    return 'Countertenor'
+  } else {
+    if (pitch <= 1.15) return 'Low Alto'
+    if (pitch <= 1.25) return 'Contralto'
+    if (pitch <= 1.38) return 'Mezzo-Soprano'
+    if (pitch <= 1.55) return 'Soprano'
+    return 'Coloratura Soprano'
+  }
 }
 
 function CustomDropdown({
@@ -130,7 +150,15 @@ function App(): React.JSX.Element {
   const [selectedOutput, setSelectedOutput] = useState<string>(
     localStorage.getItem('selectedOutput') || ''
   )
-  const [pitch, setPitch] = useState<number>(parseFloat(localStorage.getItem('pitch') || '1.0'))
+  const [voiceMode, setVoiceMode] = useState<'male' | 'female'>(
+    (localStorage.getItem('voiceMode') as 'male' | 'female') || 'male'
+  )
+  const [malePitch, setMalePitch] = useState<number>(
+    parseFloat(localStorage.getItem('malePitch') || '0.80')
+  )
+  const [femalePitch, setFemalePitch] = useState<number>(
+    parseFloat(localStorage.getItem('femalePitch') || '1.30')
+  )
   const [volume, setVolume] = useState<number>(parseFloat(localStorage.getItem('volume') || '1.0'))
 
   const [presets, setPresets] = useState<Preset[]>(() => {
@@ -151,6 +179,13 @@ function App(): React.JSX.Element {
   const analyserRef = useRef<AnalyserNode | null>(null)
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const levelFrameRef = useRef<number | null>(null)
+
+  const voiceModeRef = useRef(voiceMode)
+  useEffect(() => {
+    voiceModeRef.current = voiceMode
+  }, [voiceMode])
+
+  const currentPitch = voiceMode === 'male' ? malePitch : femalePitch
 
   useEffect(() => {
     async function getDevices(): Promise<void> {
@@ -188,19 +223,21 @@ function App(): React.JSX.Element {
   useEffect(() => {
     localStorage.setItem('selectedInput', selectedInput)
     localStorage.setItem('selectedOutput', selectedOutput)
-    localStorage.setItem('pitch', pitch.toString())
+    localStorage.setItem('voiceMode', voiceMode)
+    localStorage.setItem('malePitch', malePitch.toString())
+    localStorage.setItem('femalePitch', femalePitch.toString())
     localStorage.setItem('volume', volume.toString())
     localStorage.setItem('presets', JSON.stringify(presets))
-  }, [selectedInput, selectedOutput, pitch, volume, presets])
+  }, [selectedInput, selectedOutput, voiceMode, malePitch, femalePitch, volume, presets])
 
   useEffect(() => {
     if (pitchNodeRef.current) {
       const pitchParam = pitchNodeRef.current.parameters.get('pitch')
       if (pitchParam) {
-        pitchParam.setTargetAtTime(pitch, audioContextRef.current?.currentTime || 0, 0.1)
+        pitchParam.setTargetAtTime(currentPitch, audioContextRef.current?.currentTime || 0, 0.1)
       }
     }
-  }, [pitch])
+  }, [currentPitch])
 
   useEffect(() => {
     if (masterGainRef.current) {
@@ -239,7 +276,7 @@ function App(): React.JSX.Element {
 
           for (let i = 0; i < bufferLength; i++) {
             const barHeight = (dataArray[i] / 255) * canvas.height
-            ctx.fillStyle = '#f43f5e'
+            ctx.fillStyle = voiceModeRef.current === 'male' ? '#6366f1' : '#f43f5e'
             ctx.fillRect(x, canvas.height - barHeight, barWidth, barHeight)
             x += barWidth + 2
           }
@@ -299,7 +336,7 @@ function App(): React.JSX.Element {
       masterGainRef.current = audioContext.createGain()
 
       const pitchParam = pitchNodeRef.current.parameters.get('pitch')
-      if (pitchParam) pitchParam.setValueAtTime(pitch, audioContext.currentTime)
+      if (pitchParam) pitchParam.setValueAtTime(currentPitch, audioContext.currentTime)
 
       masterGainRef.current.gain.setValueAtTime(volume, audioContext.currentTime)
 
@@ -359,7 +396,9 @@ function App(): React.JSX.Element {
     const newPreset: Preset = {
       id: crypto.randomUUID(),
       name: presetName,
-      pitch,
+      voiceMode,
+      malePitch,
+      femalePitch,
       volume
     }
     setPresets([...presets, newPreset])
@@ -367,7 +406,20 @@ function App(): React.JSX.Element {
   }
 
   const applyPreset = (p: Preset): void => {
-    setPitch(p.pitch)
+    if (p.voiceMode) {
+      setVoiceMode(p.voiceMode)
+      setMalePitch(p.malePitch)
+      setFemalePitch(p.femalePitch)
+    } else if (p.pitch !== undefined) {
+      // Backward compatibility for old presets
+      if (p.pitch < 1.0) {
+        setVoiceMode('male')
+        setMalePitch(p.pitch)
+      } else {
+        setVoiceMode('female')
+        setFemalePitch(p.pitch)
+      }
+    }
     setVolume(p.volume)
   }
 
@@ -390,7 +442,11 @@ function App(): React.JSX.Element {
               <Pulse
                 className={cn(
                   'w-2 h-2 transition-colors duration-500',
-                  isProcessing ? 'text-rose-400' : 'text-zinc-700'
+                  isProcessing
+                    ? voiceMode === 'male'
+                      ? 'text-indigo-400'
+                      : 'text-rose-400'
+                    : 'text-zinc-700'
                 )}
               />
               <span className="text-zinc-500 text-[10px] font-medium uppercase tracking-wider">
@@ -412,7 +468,10 @@ function App(): React.JSX.Element {
               </div>
               <div className="w-10 bg-zinc-950/50 rounded-2xl border border-zinc-800/50 p-1 flex items-end">
                 <div
-                  className="w-full bg-rose-500 rounded-xl transition-all duration-75"
+                  className={cn(
+                    'w-full rounded-xl transition-all duration-75',
+                    voiceMode === 'male' ? 'bg-indigo-500' : 'bg-rose-500'
+                  )}
                   style={{ height: `${peakLevel * 100}%` }}
                 />
               </div>
@@ -453,12 +512,20 @@ function App(): React.JSX.Element {
                     value={presetName}
                     onChange={(e) => setPresetName(e.target.value)}
                     placeholder="New preset..."
-                    className="bg-zinc-800/30 border border-zinc-800 rounded-lg px-2.5 py-1 text-[11px] text-zinc-200 focus:ring-1 focus:ring-rose-500/30 outline-none transition-all placeholder:text-zinc-600 w-32"
+                    className={cn(
+                      'bg-zinc-800/30 border border-zinc-800 rounded-lg px-2.5 py-1 text-[11px] text-zinc-200 focus:ring-1 outline-none transition-all placeholder:text-zinc-600 w-32',
+                      voiceMode === 'male' ? 'focus:ring-indigo-500/30' : 'focus:ring-rose-500/30'
+                    )}
                   />
                   <button
                     onClick={savePreset}
                     disabled={!presetName.trim()}
-                    className="p-1.5 bg-rose-600 text-white rounded-lg hover:bg-rose-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    className={cn(
+                      'p-1.5 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer',
+                      voiceMode === 'male'
+                        ? 'bg-indigo-600 hover:bg-indigo-500'
+                        : 'bg-rose-600 hover:bg-rose-500'
+                    )}
                   >
                     <Plus size={12} weight="bold" />
                   </button>
@@ -475,13 +542,19 @@ function App(): React.JSX.Element {
                   >
                     <button
                       onClick={() => applyPreset(p)}
-                      className="px-2.5 py-1 text-[10px] text-zinc-300 hover:text-rose-400 transition-colors"
+                      className={cn(
+                        'px-2.5 py-1 text-[10px] text-zinc-300 transition-colors cursor-pointer',
+                        p.voiceMode === 'male' ||
+                          (!p.voiceMode && p.pitch !== undefined && p.pitch < 1.0)
+                          ? 'hover:text-indigo-400'
+                          : 'hover:text-rose-400'
+                      )}
                     >
                       {p.name}
                     </button>
                     <button
                       onClick={() => deletePreset(p.id)}
-                      className="px-1.5 py-1 bg-zinc-800/60 text-zinc-600 hover:text-red-400 transition-colors border-l border-zinc-800"
+                      className="px-1.5 py-1 bg-zinc-800/60 text-zinc-600 hover:text-red-400 transition-colors border-l border-zinc-800 cursor-pointer"
                     >
                       <Trash size={10} />
                     </button>
@@ -490,12 +563,11 @@ function App(): React.JSX.Element {
               </div>
             </div>
 
-            {/* Effects */}
-            <div className="grid grid-cols-2 gap-6 pt-3 border-t border-zinc-800/50 animate-in fade-in slide-in-from-bottom-4 duration-1000 delay-500 ease-out-expo">
-              {/* Master Volume */}
-              <div className="space-y-4">
+            {/* Master Volume */}
+            <div className="pt-3 border-t border-zinc-800/50 animate-in fade-in slide-in-from-bottom-4 duration-1000 delay-500 ease-out-expo">
+              <div className="space-y-3 bg-zinc-900/20 border border-zinc-800/40 rounded-2xl p-4">
                 <div className="flex justify-between items-center">
-                  <div className="flex items-center gap-2 text-rose-400 group">
+                  <div className="flex items-center gap-2 text-zinc-400 group">
                     <SpeakerSimpleHigh
                       size={14}
                       className="transition-transform duration-500 group-hover:scale-110"
@@ -515,33 +587,190 @@ function App(): React.JSX.Element {
                   step="0.01"
                   value={volume}
                   onChange={(e) => setVolume(parseFloat(e.target.value))}
-                  className="w-full h-1 bg-zinc-800 rounded-full appearance-none cursor-pointer accent-rose-500 hover:accent-rose-400 transition-all"
+                  className={cn(
+                    'w-full h-1 bg-zinc-800 rounded-full appearance-none cursor-pointer transition-all',
+                    voiceMode === 'male'
+                      ? 'accent-indigo-500 hover:accent-indigo-400'
+                      : 'accent-rose-500 hover:accent-rose-400'
+                  )}
                 />
               </div>
+            </div>
 
-              {/* Pitch */}
-              <div className="space-y-4">
-                <div className="flex justify-between items-center">
-                  <div className="flex items-center gap-2 text-rose-400 group">
-                    <Lightning
-                      size={14}
-                      className="transition-transform duration-500 group-hover:scale-110"
-                    />
-                    <span className="text-[10px] font-semibold uppercase tracking-wider">
-                      Pitch Modulation
-                    </span>
+            {/* Voice Modulations */}
+            <div className="grid grid-cols-2 gap-6 animate-in fade-in slide-in-from-bottom-4 duration-1000 delay-550 ease-out-expo">
+              {/* Male Voice Modulation Card */}
+              <div
+                onClick={() => setVoiceMode('male')}
+                className={cn(
+                  'group flex flex-col justify-between p-5 rounded-2xl border transition-all duration-500 cursor-pointer relative overflow-hidden select-none',
+                  voiceMode === 'male'
+                    ? 'bg-indigo-950/10 border-indigo-500/30 shadow-lg shadow-indigo-950/10'
+                    : 'bg-zinc-900/10 border-zinc-800/50 opacity-60 hover:opacity-80 hover:border-zinc-700/50'
+                )}
+              >
+                {/* Active indicator glow */}
+                {voiceMode === 'male' && (
+                  <div className="absolute top-0 right-0 w-24 h-24 bg-indigo-500/10 rounded-full blur-2xl -mr-8 -mt-8 pointer-events-none" />
+                )}
+
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2.5">
+                      <div
+                        className={cn(
+                          'p-2 rounded-xl transition-colors duration-500',
+                          voiceMode === 'male'
+                            ? 'bg-indigo-500/15 text-indigo-400'
+                            : 'bg-zinc-800 text-zinc-500 group-hover:text-zinc-400'
+                        )}
+                      >
+                        <GenderMale size={18} weight="bold" />
+                      </div>
+                      <div className="flex flex-col">
+                        <span
+                          className={cn(
+                            'text-xs font-semibold uppercase tracking-wider transition-colors duration-500',
+                            voiceMode === 'male' ? 'text-indigo-400' : 'text-zinc-400'
+                          )}
+                        >
+                          Male Voice
+                        </span>
+                        <span className="text-[10px] text-zinc-500">Pitch & Tone</span>
+                      </div>
+                    </div>
+                    {voiceMode === 'male' && (
+                      <span className="text-indigo-400 text-[10px] font-mono bg-indigo-500/10 px-2 py-0.5 rounded-md border border-indigo-500/20">
+                        Active
+                      </span>
+                    )}
                   </div>
-                  <span className="text-zinc-400 font-mono text-xs">{pitch.toFixed(2)}x</span>
+
+                  <div className="space-y-3 pt-2">
+                    <div className="flex justify-between items-center">
+                      <span
+                        className={cn(
+                          'text-[11px] font-medium transition-colors',
+                          voiceMode === 'male' ? 'text-indigo-400' : 'text-zinc-400'
+                        )}
+                      >
+                        {getVoiceDescriptor('male', malePitch)}
+                      </span>
+                      <span className="text-zinc-500 font-mono text-xs">
+                        {malePitch.toFixed(2)}x
+                      </span>
+                    </div>
+                    <input
+                      type="range"
+                      min="0.50"
+                      max="0.95"
+                      step="0.01"
+                      value={malePitch}
+                      onChange={(e) => {
+                        e.stopPropagation()
+                        setMalePitch(parseFloat(e.target.value))
+                        setVoiceMode('male')
+                      }}
+                      className={cn(
+                        'w-full h-1 bg-zinc-800 rounded-full appearance-none cursor-pointer transition-all',
+                        voiceMode === 'male'
+                          ? 'accent-indigo-500 hover:accent-indigo-400'
+                          : 'accent-zinc-600 hover:accent-zinc-500'
+                      )}
+                    />
+                    <div className="flex justify-between text-[9px] text-zinc-600 font-medium">
+                      <span>Deep Bass</span>
+                      <span>Countertenor</span>
+                    </div>
+                  </div>
                 </div>
-                <input
-                  type="range"
-                  min="0.5"
-                  max="2.0"
-                  step="0.01"
-                  value={pitch}
-                  onChange={(e) => setPitch(parseFloat(e.target.value))}
-                  className="w-full h-1 bg-zinc-800 rounded-full appearance-none cursor-pointer accent-rose-500 hover:accent-rose-400 transition-all"
-                />
+              </div>
+
+              {/* Female Voice Modulation Card */}
+              <div
+                onClick={() => setVoiceMode('female')}
+                className={cn(
+                  'group flex flex-col justify-between p-5 rounded-2xl border transition-all duration-500 cursor-pointer relative overflow-hidden select-none',
+                  voiceMode === 'female'
+                    ? 'bg-rose-950/10 border-rose-500/30 shadow-lg shadow-rose-950/10'
+                    : 'bg-zinc-900/10 border-zinc-800/50 opacity-60 hover:opacity-80 hover:border-zinc-700/50'
+                )}
+              >
+                {/* Active indicator glow */}
+                {voiceMode === 'female' && (
+                  <div className="absolute top-0 right-0 w-24 h-24 bg-rose-500/10 rounded-full blur-2xl -mr-8 -mt-8 pointer-events-none" />
+                )}
+
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2.5">
+                      <div
+                        className={cn(
+                          'p-2 rounded-xl transition-colors duration-500',
+                          voiceMode === 'female'
+                            ? 'bg-rose-500/15 text-rose-400'
+                            : 'bg-zinc-800 text-zinc-500 group-hover:text-zinc-400'
+                        )}
+                      >
+                        <GenderFemale size={18} weight="bold" />
+                      </div>
+                      <div className="flex flex-col">
+                        <span
+                          className={cn(
+                            'text-xs font-semibold uppercase tracking-wider transition-colors duration-500',
+                            voiceMode === 'female' ? 'text-rose-400' : 'text-zinc-400'
+                          )}
+                        >
+                          Female Voice
+                        </span>
+                        <span className="text-[10px] text-zinc-500">Pitch & Tone</span>
+                      </div>
+                    </div>
+                    {voiceMode === 'female' && (
+                      <span className="text-rose-400 text-[10px] font-mono bg-rose-500/10 px-2 py-0.5 rounded-md border border-rose-500/20">
+                        Active
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="space-y-3 pt-2">
+                    <div className="flex justify-between items-center">
+                      <span
+                        className={cn(
+                          'text-[11px] font-medium transition-colors',
+                          voiceMode === 'female' ? 'text-rose-400' : 'text-zinc-400'
+                        )}
+                      >
+                        {getVoiceDescriptor('female', femalePitch)}
+                      </span>
+                      <span className="text-zinc-500 font-mono text-xs">
+                        {femalePitch.toFixed(2)}x
+                      </span>
+                    </div>
+                    <input
+                      type="range"
+                      min="1.05"
+                      max="1.80"
+                      step="0.01"
+                      value={femalePitch}
+                      onChange={(e) => {
+                        e.stopPropagation()
+                        setFemalePitch(parseFloat(e.target.value))
+                        setVoiceMode('female')
+                      }}
+                      className={cn(
+                        'w-full h-1 bg-zinc-800 rounded-full appearance-none cursor-pointer transition-all',
+                        voiceMode === 'female'
+                          ? 'accent-rose-500 hover:accent-rose-400'
+                          : 'accent-zinc-600 hover:accent-zinc-500'
+                      )}
+                    />
+                    <div className="flex justify-between text-[9px] text-zinc-600 font-medium">
+                      <span>Low Alto</span>
+                      <span>High Soprano</span>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -551,11 +780,14 @@ function App(): React.JSX.Element {
                 onClick={toggleProcessing}
                 disabled={isStarting}
                 className={cn(
-                  'w-full py-4 rounded-2xl font-semibold text-xs uppercase tracking-[0.2em] transition-all duration-500 cursor-pointer overflow-hidden relative',
-                  isProcessing
-                    ? 'bg-red-600 text-white hover:bg-red-500 shadow-xl shadow-red-900/20 active:scale-[0.98]'
-                    : 'bg-rose-600 text-white shadow-xl shadow-rose-900/20 hover:bg-rose-500 hover:scale-[1.01] active:scale-[0.99]',
-                  isStarting && 'opacity-50 cursor-wait'
+                  'w-full py-4 rounded-2xl font-semibold text-xs uppercase tracking-[0.2em] cursor-pointer overflow-hidden relative text-white',
+                  isStarting
+                    ? 'btn-engine-starting opacity-50'
+                    : isProcessing
+                      ? 'btn-engine-active shadow-xl shadow-red-950/20'
+                      : voiceMode === 'male'
+                        ? 'btn-engine-male shadow-xl shadow-indigo-950/20'
+                        : 'btn-engine-female shadow-xl shadow-rose-950/20'
                 )}
               >
                 <div className="flex items-center justify-center gap-3 relative z-10">
@@ -576,9 +808,6 @@ function App(): React.JSX.Element {
                       ? 'Terminate Engine'
                       : 'Initialize Engine'}
                 </div>
-                {!isProcessing && !isStarting && (
-                  <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent -translate-x-full hover:animate-[shimmer_1.5s_infinite]" />
-                )}
               </button>
             </div>
           </div>
