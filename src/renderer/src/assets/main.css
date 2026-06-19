@@ -191,3 +191,135 @@ code {
     display: none;
   }
 }
+
+/* Engine Button Animations & Styles - Soundwave Radar/Sonar Ping */
+@keyframes sonar-ping-indigo {
+  0% {
+    transform: scale(1);
+    border-color: rgba(99, 102, 241, 0.65);
+    box-shadow: 0 0 4px rgba(99, 102, 241, 0.3);
+    opacity: 0.8;
+  }
+  100% {
+    transform: scale(1.16, 1.3);
+    border-color: rgba(99, 102, 241, 0);
+    box-shadow: 0 0 16px rgba(99, 102, 241, 0);
+    opacity: 0;
+  }
+}
+
+@keyframes sonar-ping-rose {
+  0% {
+    transform: scale(1);
+    border-color: rgba(244, 63, 94, 0.65);
+    box-shadow: 0 0 4px rgba(244, 63, 94, 0.3);
+    opacity: 0.8;
+  }
+  100% {
+    transform: scale(1.16, 1.3);
+    border-color: rgba(244, 63, 94, 0);
+    box-shadow: 0 0 16px rgba(244, 63, 94, 0);
+    opacity: 0;
+  }
+}
+
+@keyframes sonar-ping-red {
+  0% {
+    transform: scale(1);
+    border-color: rgba(220, 38, 38, 0.7);
+    box-shadow: 0 0 4px rgba(220, 38, 38, 0.3);
+    opacity: 0.85;
+  }
+  100% {
+    transform: scale(1.16, 1.3);
+    border-color: rgba(220, 38, 38, 0);
+    box-shadow: 0 0 16px rgba(220, 38, 38, 0);
+    opacity: 0;
+  }
+}
+
+.btn-engine-male::before,
+.btn-engine-male::after,
+.btn-engine-female::before,
+.btn-engine-female::after,
+.btn-engine-active::before,
+.btn-engine-active::after {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  border: 1.5px solid transparent;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: 0;
+  z-index: -1;
+}
+
+.btn-engine-male {
+  background-color: #6366f1; /* indigo-500 */
+  transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  position: relative;
+  z-index: 10;
+}
+.btn-engine-male:hover {
+  background-color: #4f46e5; /* indigo-600 */
+  transform: translateY(-1px);
+}
+.btn-engine-male:hover::before {
+  animation: sonar-ping-indigo 1.8s cubic-bezier(0.16, 1, 0.3, 1) infinite;
+}
+.btn-engine-male:hover::after {
+  animation: sonar-ping-indigo 1.8s cubic-bezier(0.16, 1, 0.3, 1) infinite;
+  animation-delay: 0.9s;
+}
+.btn-engine-male:active {
+  transform: translateY(1px) scale(0.99);
+}
+
+.btn-engine-female {
+  background-color: #f43f5e; /* rose-500 */
+  transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  position: relative;
+  z-index: 10;
+}
+.btn-engine-female:hover {
+  background-color: #e11d48; /* rose-600 */
+  transform: translateY(-1px);
+}
+.btn-engine-female:hover::before {
+  animation: sonar-ping-rose 1.8s cubic-bezier(0.16, 1, 0.3, 1) infinite;
+}
+.btn-engine-female:hover::after {
+  animation: sonar-ping-rose 1.8s cubic-bezier(0.16, 1, 0.3, 1) infinite;
+  animation-delay: 0.9s;
+}
+.btn-engine-female:active {
+  transform: translateY(1px) scale(0.99);
+}
+
+.btn-engine-active {
+  background-color: #dc2626; /* red-600 */
+  transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  position: relative;
+  z-index: 10;
+}
+.btn-engine-active:hover {
+  background-color: #b91c1c; /* red-700 */
+}
+.btn-engine-active::before {
+  animation: sonar-ping-red 1.8s cubic-bezier(0.16, 1, 0.3, 1) infinite;
+}
+.btn-engine-active::after {
+  animation: sonar-ping-red 1.8s cubic-bezier(0.16, 1, 0.3, 1) infinite;
+  animation-delay: 0.9s;
+}
+.btn-engine-active:active {
+  transform: translateY(1px) scale(0.985);
+}
+
+.btn-engine-starting {
+  background-color: #27272a; /* zinc-800 */
+  color: #a1a1aa; /* zinc-400 */
+  cursor: wait;
+  position: relative;
+  z-index: 10;
+}
